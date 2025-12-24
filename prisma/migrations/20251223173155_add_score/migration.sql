@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Kingdom" ADD COLUMN     "score" DOUBLE PRECISION NOT NULL DEFAULT 0;

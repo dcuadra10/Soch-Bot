@@ -1,0 +1,52 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Kingdom {
+  id          Int      @id @default(autoincrement())
+  kdNumber    String   @unique // Kingdom number can be something like '1234' or 'K1234'
+  name        String
+  project     String?  // Optional project/family name
+  seed        String   // e.g., 'A', 'B', 'C', 'Imperium'
+  powerReq    BigInt   // Using BigInt for large numbers in RoK
+  kpReq       BigInt
+  kpMultiplier Float?  // For dynamic KP reqs (e.g. 4x Power)
+  kvkWins     Int      @default(0)
+  kvkLosses   Int      @default(0)
+  totalKp     BigInt?  // Kingdom's total KP (Optional)
+  migrantSlots Int?    // Available migrant slots (Optional)
+  migrationStart DateTime? // Migration Start Date
+  migrationEnd   DateTime? // Migration End Date
+  ownerId     String   // Discord User ID of the King
+  description String?
+  imageUrl    String?   // Kingdom Ad/Image
+  discordInvite String? // Discord Server Invite
+  questions   String?  // Custom questions for applicants
+  score       Float    @default(0) // Staff-assigned score
+  migrationOpen  DateTime?
+  migrationClose DateTime?
+  isPaid      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tickets     Ticket[]
+}
+
+model Ticket {
+  id        Int      @id @default(autoincrement())
+  channelId String   @unique // The Discord channel ID for this ticket
+  userId    String   // The applicant's Discord ID
+  kingdomId Int
+  status    String   @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  notified  Boolean  @default(false)
+  kingdom   Kingdom  @relation(fields: [kingdomId], references: [id])
+  createdAt DateTime @default(now())
+  closed    Boolean  @default(false)
+}

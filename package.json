@@ -1,0 +1,30 @@
+{
+  "name": "soch",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "deploy": "ts-node src/deploy-commands.ts",
+    "start": "ts-node src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@types/express": "^5.0.6",
+    "@types/node-cron": "^3.0.11",
+    "axios": "^1.13.2",
+    "discord.js": "^14.25.1",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1",
+    "prisma": "^5.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
