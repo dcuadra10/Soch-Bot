@@ -1,5 +1,5 @@
 
-import { ChatInputCommandInteraction, PermissionFlagsBits, MessageFlags } from 'discord.js';
+import { ChatInputCommandInteraction, PermissionFlagsBits, MessageFlags, ChannelType } from 'discord.js';
 import { prisma } from '../config';
 
 export async function unbanPostCommand(interaction: ChatInputCommandInteraction) {
@@ -10,7 +10,7 @@ export async function unbanPostCommand(interaction: ChatInputCommandInteraction)
 
     const channel = interaction.options.getChannel('post') || interaction.channel;
 
-    if (!channel || !channel.isThread()) {
+    if (!channel || channel.type !== ChannelType.PublicThread) {
         await interaction.reply({ content: "⚠️ Please specify a valid recruitment thread or use this command inside one.", flags: MessageFlags.Ephemeral });
         return;
     }
@@ -41,7 +41,7 @@ export async function checkPostCommand(interaction: ChatInputCommandInteraction)
 
     const channel = interaction.options.getChannel('post') || interaction.channel;
 
-    if (!channel || !channel.isThread()) {
+    if (!channel || channel.type !== ChannelType.PublicThread) {
         await interaction.reply({ content: "⚠️ Please specify a valid recruitment thread or use this command inside one.", flags: MessageFlags.Ephemeral });
         return;
     }
