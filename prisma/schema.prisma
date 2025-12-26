@@ -79,8 +79,8 @@ model RecruitmentThread {
 
 model BumpUser {
   id          Int      @id @default(autoincrement())
-  threadId    String   @index
-  userId      String   @index
+  threadId    String
+  userId      String
   strikeCount Int      @default(0)
   banExpires  DateTime?
   lastBumped  DateTime @default(now())
