@@ -1,77 +1,100 @@
 // @ts-nocheck
 import { ChatInputCommandInteraction, ButtonInteraction, TextChannel, ChannelType, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ModalSubmitInteraction } from 'discord.js';
 import { prisma } from '../config';
-
-// Number formatter
-const fmt = new Intl.NumberFormat('en-US');
-
-import { parseStatsInput } from '../utils/format';
+import { parseStatsInput, formatNumber } from '../utils/format';
 
 export async function findKingdom(interaction: ChatInputCommandInteraction) {
-    const powerInput = interaction.options.getString('power', true);
-    const kpInput = interaction.options.getString('kp', true);
-    const seedInput = interaction.options.getString('seed');
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const seedInput = interaction.options.getString('seed') || '';
 
-    const powerVal = parseStatsInput(powerInput) || BigInt(0);
-    const kpVal = parseStatsInput(kpInput) || BigInt(0);
+    // Fetch User Profile
+    const profile = await prisma.userProfile.findUnique({ where: { discordId: interaction.user.id } });
 
-    const whereClause: any = {};
-    if (seedInput) {
-        whereClause.seed = { contains: seedInput, mode: 'insensitive' };
+    let powerVal = BigInt(0);
+    let kpVal = BigInt(0);
+    let hasProfile = false;
+
+    if (profile) {
+        powerVal = profile.power;
+        kpVal = profile.kp;
+        hasProfile = true;
     }
 
-    // Fetch all (filtered by seed) and filter stats in memory for complex logic
+    const whereClause: any = {
+        seed: { contains: seedInput, mode: 'insensitive' },
+        verified: true
+    };
+
+    // Fetch all (filtered by seed)
     const allKingdoms = await prisma.kingdom.findMany({
         where: whereClause
     });
 
     const kingdoms = allKingdoms.filter((k: any) => {
-        // 1. Power Check (With 80% Tolerance)
-        // Kingdom asks for X. User needs 0.8 * X.
+        // If no profile, show everything matching the seed (skip stat checks)
+        if (!hasProfile) return true;
+
+        // 1. Power Check (With tolerance)
         const strictReqPower = BigInt(k.powerReq);
         const toleratedReqPower = strictReqPower * 75n / 100n;
 
-        if (strictReqPower > BigInt(0) && powerVal < toleratedReqPower) return false;
+        if (powerVal && strictReqPower > BigInt(0) && powerVal < toleratedReqPower) return false;
 
-        // 2. KP Check (Strict / 100%)
+        // 2. KP Check
         let reqKp = BigInt(0);
         if (k.kpMultiplier) {
-            // Dynamic: UserPower * Multiplier
             reqKp = BigInt(Math.floor(Number(powerVal) * k.kpMultiplier));
         } else {
-            // Static
             reqKp = BigInt(k.kpReq);
         }
 
-        if (reqKp > BigInt(0) && kpVal < reqKp) return false;
+        if (kpVal && reqKp > BigInt(0) && kpVal < reqKp) return false;
 
         return true;
-    }).slice(0, 5); // Take top 5 after filter
+    }).slice(0, 5);
 
     if (kingdoms.length === 0) {
-        await interaction.reply({ content: "No kingdoms found matching your stats.", flags: MessageFlags.Ephemeral });
+        await interaction.editReply({ content: hasProfile ? "No kingdoms found matching your stats." : "No kingdoms found for this seed." });
         return;
     }
 
     const embed = new EmbedBuilder()
         .setTitle("Matching Kingdoms")
-        .setDescription("Here are kingdoms that match your stats:")
+        .setDescription(hasProfile
+            ? `Kingdoms matching your profile (Power: ${formatNumber(powerVal)}, KP: ${formatNumber(kpVal)}):`
+            : "⚠️ **No Profile Found:** Showing all kingdoms for this Seed.\nUse `/create-account` to filter by your stats!")
         .setColor(0x00FF00);
 
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
     kingdoms.forEach((k: any, index) => {
-        const kpDisplay = k.kpMultiplier ? `${k.kpMultiplier}x Power` : `${fmt.format(Number(k.kpReq))} KP`;
-        const totalKpDisplay = k.totalKp ? `\nTotal KP: **${fmt.format(Number(k.totalKp))}**` : '';
+        let kpDisplay = '';
+        if (k.kpMultiplier) {
+            if (hasProfile) {
+                const req = BigInt(Math.floor(Number(powerVal) * k.kpMultiplier));
+                kpDisplay = `${formatNumber(req)} KP (${k.kpMultiplier}x)`;
+            } else {
+                kpDisplay = `${k.kpMultiplier}x Power`;
+            }
+        } else {
+            kpDisplay = `${formatNumber(k.kpReq)} KP`;
+        }
+        const totalKpDisplay = k.totalKp ? `\nTotal KP: **${formatNumber(k.totalKp)}**` : '';
         const slotsDisplay = k.migrantSlots ? ` | Slots: **${k.migrantSlots}**` : '';
-        // Format dates simply
-        const migStart = k.migrationStart ? new Date(k.migrationStart).toISOString().split('T')[0] : '?';
-        const migEnd = k.migrationEnd ? new Date(k.migrationEnd).toISOString().split('T')[0] : '?';
-        const migDisplay = (k.migrationStart && k.migrationEnd) ? `\nMigration: **${migStart}** ➡ **${migEnd}**` : '';
+
+        let migDisplay = '';
+        if (k.migrationStart && k.migrationEnd) {
+            const tsStart = Math.floor(new Date(k.migrationStart).getTime() / 1000);
+            const tsEnd = Math.floor(new Date(k.migrationEnd).getTime() / 1000);
+            migDisplay = `\nMigration: <t:${tsStart}:D> ➡ <t:${tsEnd}:D>`; // D = Long Date (25 December 2025)
+        } else if (k.migrationStart) {
+            const tsStart = Math.floor(new Date(k.migrationStart).getTime() / 1000);
+            migDisplay = `\nMigration Starts: <t:${tsStart}:R>`; // R = Relative (in 5 days)
+        }
 
         embed.addFields({
             name: `#${k.kdNumber} - ${k.name} (${k.seed}-Seed)${slotsDisplay}`,
-            value: `Score: **${k.score || 0}**\nReq: **${fmt.format(Number(k.powerReq))}** Power, **${kpDisplay}**\nKvK: ${k.kvkWins}W / ${k.kvkLosses}L${totalKpDisplay}${migDisplay}`
+            value: `Score: **${k.score ? k.score : 'N/A'}**\nReq: **${formatNumber(k.powerReq)}** Power, **${kpDisplay}**\nKvK: ${k.kvkWins}W / ${k.kvkLosses}L${totalKpDisplay}${migDisplay}`
         });
 
         // Limit buttons to 5 per row
@@ -87,7 +110,7 @@ export async function findKingdom(interaction: ChatInputCommandInteraction) {
         );
     });
 
-    await interaction.reply({ embeds: [embed], components: rows, flags: [] });
+    await interaction.editReply({ embeds: [embed], components: rows });
 }
 
 export async function handleScanApply(interaction: ButtonInteraction) {
@@ -106,22 +129,46 @@ export async function handleScanApply(interaction: ButtonInteraction) {
             .setCustomId(`application_modal_${kingdom.id}`)
             .setTitle(`Apply to Kingdom #${kingdom.kdNumber}`);
 
-        const questionsInput = new TextInputBuilder()
-            .setCustomId('answers')
-            .setLabel("Please answer the kingdom's questions:")
-            .setPlaceholder(kingdom.questions.substring(0, 100)) // Use questions as placeholder
-            .setValue(kingdom.questions.length > 2000 ? "Check channel for full questions." : "") // Cannot prefill value easily as this is input. 
-            // Better strategy: Use label generic, but maybe put questions in the modal?? Discord modals don't support text-only fields nicely.
-            // We will rely on the user having read them or just putting "See below" if standard.
-            // Wait, USER wants "questions to be asked as a form".
-            // Since we only have one questions string, we will ask them to answer it here.
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(true);
+        // Split questions intelligently
+        let questionsList = kingdom.questions.split('@@@').map(q => q.trim()).filter(q => q.length > 0);
 
-        const row = new ActionRowBuilder<TextInputBuilder>().addComponents(questionsInput);
-        modal.addComponents(row);
+        if (questionsList.length <= 1 && !kingdom.questions.includes('@@@')) {
+            // Fallback: If no delimiter found, assume newlines separate questions
+            // But check if it actually HAS newlines
+            if (kingdom.questions.includes('\n')) {
+                questionsList = kingdom.questions.split('\n').map(q => q.trim()).filter(q => q.length > 0);
+            }
+        }
 
-        await interaction.showModal(modal);
+        if (questionsList.length === 0 && kingdom.questions.trim().length > 0) {
+            questionsList.push(kingdom.questions);
+        }
+
+        // Limit to 5 questions (Discord Modal Limit)
+        const finalQuestions = questionsList.slice(0, 5);
+
+        for (let i = 0; i < finalQuestions.length; i++) {
+            const qText = finalQuestions[i];
+            const label = qText.length > 45 ? qText.substring(0, 42) + '...' : qText;
+
+            const input = new TextInputBuilder()
+                .setCustomId(`answer_${i}`)
+                .setLabel(label)
+                .setPlaceholder("Your answer...")
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+        }
+
+        try {
+            await interaction.showModal(modal);
+        } catch (error) {
+            console.error(error);
+            if (!interaction.replied) {
+                await interaction.reply({ content: "Error opening application form. Please try again.", flags: MessageFlags.Ephemeral });
+            }
+        }
     } else {
         // No questions, proceed to create ticket directly
         await createApplicationTicket(interaction, kingdom, null);
@@ -130,12 +177,43 @@ export async function handleScanApply(interaction: ButtonInteraction) {
 
 export async function handleApplicationSubmit(interaction: ModalSubmitInteraction) {
     const kingdomId = parseInt(interaction.customId.split('_')[2]);
-    const answers = interaction.fields.getTextInputValue('answers');
-
     const kingdom = await prisma.kingdom.findUnique({ where: { id: kingdomId } });
+
     if (!kingdom) {
         await interaction.reply({ content: "Kingdom not found.", flags: MessageFlags.Ephemeral });
         return;
+    }
+
+    let answers = "";
+    // Re-construct question list to match labels
+    let questionsList = kingdom.questions?.split('@@@').map(q => q.trim()).filter(q => q.length > 0) || [];
+
+    if (questionsList.length <= 1 && kingdom.questions && !kingdom.questions.includes('@@@') && kingdom.questions.includes('\n')) {
+        questionsList = kingdom.questions.split('\n').map(q => q.trim()).filter(q => q.length > 0);
+    }
+
+    if (questionsList.length === 0 && kingdom.questions) {
+        questionsList.push(kingdom.questions);
+    }
+
+    for (let i = 0; i < 5; i++) {
+        try {
+            const ans = interaction.fields.getTextInputValue(`answer_${i}`);
+            if (ans) {
+                const qLabel = questionsList[i] || `Question ${i + 1}`;
+                answers += `**${qLabel}**\n${ans}\n\n`;
+            }
+        } catch (e) {
+            // Field not found (less questions than 5)
+        }
+    }
+
+    // Legacy fallback
+    if (!answers) {
+        try {
+            const oldAns = interaction.fields.getTextInputValue('answers');
+            if (oldAns) answers = `**Answers:**\n${oldAns}`;
+        } catch (e) { }
     }
 
     await createApplicationTicket(interaction, kingdom, answers);
@@ -203,11 +281,16 @@ async function createApplicationTicket(interaction: ButtonInteraction | ModalSub
             );
 
         // Format dates if available
+        // Format dates if available
         let dateInfo = "";
-        if (kingdom.migrationOpen) {
-            const openDate = new Date(kingdom.migrationOpen).toLocaleDateString();
-            const closeDate = kingdom.migrationClose ? new Date(kingdom.migrationClose).toLocaleDateString() : "Indefinite";
-            dateInfo = `\n📅 **Migration Window**: ${openDate} - ${closeDate}`;
+        if (kingdom.migrationStart) {
+            const tsStart = Math.floor(new Date(kingdom.migrationStart).getTime() / 1000);
+            if (kingdom.migrationEnd) {
+                const tsEnd = Math.floor(new Date(kingdom.migrationEnd).getTime() / 1000);
+                dateInfo = `\n📅 **Migration Window**: <t:${tsStart}:D> - <t:${tsEnd}:D>`;
+            } else {
+                dateInfo = `\n📅 **Migration Starts**: <t:${tsStart}:D>`;
+            }
         }
 
         // Initial Message
@@ -216,7 +299,7 @@ async function createApplicationTicket(interaction: ButtonInteraction | ModalSub
             components: [ticketRow]
         });
 
-        // If answers provided, send Embed
+        // 1. Application Form (Questions)
         if (answers || kingdom.questions) {
             const embed = new EmbedBuilder()
                 .setTitle("📋 Application Form")
@@ -224,10 +307,34 @@ async function createApplicationTicket(interaction: ButtonInteraction | ModalSub
                 .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
                 .addFields(
                     { name: 'Kingdom Questions', value: kingdom.questions || "None provided." },
-                    { name: 'User Answers', value: answers || "No answers provided (or not required)." }
+                    { name: 'User Answers', value: answers || "No answers provided." }
                 );
-
             await channel.send({ embeds: [embed] });
+        }
+
+        // 2. User Profile Fetch & Embed
+        const userProfile = await prisma.userProfile.findUnique({ where: { discordId: interaction.user.id } });
+
+        if (userProfile) {
+            const profileEmbed = new EmbedBuilder()
+                .setTitle("👤 Governor Profile")
+                .setColor(0xFFA500)
+                .addFields(
+                    { name: "In-Game Name", value: userProfile.ingameName, inline: true },
+                    { name: "In-Game ID", value: userProfile.ingameId, inline: true },
+                    { name: "Current Kingdom", value: userProfile.kingdomNumber, inline: true },
+                    { name: "Power", value: formatNumber(userProfile.power), inline: true },
+                    { name: "Kill Points", value: formatNumber(userProfile.kp), inline: true },
+                    { name: "Dead Troops", value: formatNumber(userProfile.dead), inline: true },
+                    { name: "Farms", value: userProfile.farms.toString(), inline: true },
+                    { name: "CH25 Farms", value: userProfile.ch25Farms.toString(), inline: true }
+                )
+                .setImage(userProfile.imageUrl)
+                .setFooter({ text: "To update this info, use /edit-account" });
+
+            await channel.send({ embeds: [profileEmbed] });
+        } else {
+            await channel.send("⚠️ **Warning:** You have not set up your Governor Profile yet.\nPlease run `/create-account` so the King can see your stats!");
         }
 
         await interaction.reply({ content: `Ticket created: ${channel.toString()}`, flags: MessageFlags.Ephemeral });

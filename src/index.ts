@@ -28,6 +28,26 @@ process.on('uncaughtException', error => {
     console.error('Uncaught exception:', error);
 });
 
+import { handleThreadCreate, handleForumMessage } from './events/forum';
+
+// ... (existing events)
+
+client.on(Events.ThreadCreate, async (thread) => {
+    try {
+        await handleThreadCreate(thread as any);
+    } catch (e) {
+        console.error("ThreadCreate Error:", e);
+    }
+});
+
+client.on(Events.MessageCreate, async (message) => {
+    try {
+        await handleForumMessage(message as any);
+    } catch (e) {
+        console.error("MessageCreate Error:", e);
+    }
+});
+
 client.login(config.token);
 
 // --- Uptime & Health Check ---
@@ -42,8 +62,16 @@ app.get('/health', (req, res) => {
     res.status(200).send('OK');
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`Web server running on port ${PORT}`);
+});
+
+server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+        console.warn(`Port ${PORT} is in use. Web server skipped, but Bot is still running.`);
+    } else {
+        console.error('Web server error:', err);
+    }
 });
 
 // Optional: Ping Healthchecks.io if URL provided

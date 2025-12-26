@@ -8,19 +8,21 @@ import {
     TextInputStyle,
     GuildMember,
     PermissionFlagsBits,
-    MessageFlags,
-    ChannelType,
-    TextChannel,
     EmbedBuilder,
     ButtonBuilder,
     ButtonStyle,
     ComponentType,
     Message,
+    TextChannel,
+    MessageFlags,
     StringSelectMenuBuilder,
-    StringSelectMenuOptionBuilder
+    StringSelectMenuOptionBuilder,
+    ChannelType,
+    ButtonInteraction
 } from 'discord.js';
 import { prisma, config } from '../config';
-import { parseStatsInput } from '../utils/format';
+import { parseStatsInput, formatNumber } from '../utils/format';
+
 
 interface RegistrationSession {
     userId: string;
@@ -327,10 +329,11 @@ function startWizardCollector(channel: TextChannel, userId: string) {
                 case 'KP_REQ':
                     let kpVal = BigInt(0);
                     let multiplier: number | undefined = undefined;
+                    const kpInput = content.trim().toLowerCase();
 
-                    if (content.toLowerCase().endsWith('x')) {
+                    if (kpInput.endsWith('x')) {
                         // MULTIPLIER LOGIC
-                        const mul = parseFloat(content.toLowerCase().replace('x', ''));
+                        const mul = parseFloat(kpInput.replace('x', ''));
                         if (isNaN(mul)) {
                             await message.reply("Invalid multiplier. Try `4x`, `5x` or a fixed number `2b`.");
                             return;
@@ -387,24 +390,54 @@ function startWizardCollector(channel: TextChannel, userId: string) {
                         session.data.discordInvite = content;
                     }
                     session.step = 'MIGRATION_START';
-                    await channel.send("✅ Saved.\nEnter Migration **Start Date** (YYYY-MM-DD).\n(Required)");
+                    await channel.send("✅ Saved.\nEnter Migration **Start Date**.\nFormat: `DD/MM/YYYY` (e.g. 25/12/2025)");
                     break;
 
                 case 'MIGRATION_START':
-                    const dStart = new Date(content);
+                    // Basic parser for DD/MM/YYYY or YYYY-MM-DD
+                    let dStartStr = content.trim().replace(/-/g, '/'); // Normalize - to /
+                    let dStartTokens = dStartStr.split('/');
+                    let dStart: Date;
+
+                    // Assume DD/MM/YYYY if 3 parts and first is day
+                    if (dStartTokens.length === 3) {
+                        // Check if YYYY is first
+                        if (dStartTokens[0].length === 4) {
+                            dStart = new Date(dStartStr); // YYYY/MM/DD
+                        } else {
+                            // DD/MM/YYYY -> MM/DD/YYYY for JS Date constructor or YYYY-MM-DD
+                            dStart = new Date(`${dStartTokens[2]}-${dStartTokens[1]}-${dStartTokens[0]}`);
+                        }
+                    } else {
+                        dStart = new Date(content);
+                    }
+
                     if (isNaN(dStart.getTime())) {
-                        await message.reply("Invalid date format. Use YYYY-MM-DD.");
+                        await message.reply("Invalid date. Please use format `DD/MM/YYYY` (e.g. 31/12/2024).");
                         return;
                     }
                     session.data.migrationStart = dStart;
                     session.step = 'MIGRATION_END';
-                    await channel.send("✅ Start Date saved.\nNow enter Migration **End Date** (YYYY-MM-DD).\n(Required)");
+                    await channel.send("✅ Start Date saved.\nEnter Migration **End Date**.\nFormat: `DD/MM/YYYY` (e.g. 15/01/2025)");
                     break;
 
                 case 'MIGRATION_END':
-                    const dEnd = new Date(content);
+                    let dEndStr = content.trim().replace(/-/g, '/');
+                    let dEndTokens = dEndStr.split('/');
+                    let dEnd: Date;
+
+                    if (dEndTokens.length === 3) {
+                        if (dEndTokens[0].length === 4) {
+                            dEnd = new Date(dEndStr);
+                        } else {
+                            dEnd = new Date(`${dEndTokens[2]}-${dEndTokens[1]}-${dEndTokens[0]}`);
+                        }
+                    } else {
+                        dEnd = new Date(content);
+                    }
+
                     if (isNaN(dEnd.getTime())) {
-                        await message.reply("Invalid date format. Use YYYY-MM-DD.");
+                        await message.reply("Invalid date. Please use format `DD/MM/YYYY` (e.g. 30/01/2025).");
                         return;
                     }
                     if (session.data.migrationStart && dEnd < session.data.migrationStart) {
@@ -468,11 +501,21 @@ async function renderQuestionsStep(channel: TextChannel, session: RegistrationSe
 
     const row = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(
-            new ButtonBuilder().setCustomId('add_question').setLabel('Add Question').setStyle(ButtonStyle.Primary).setEmoji('➕'),
-            new ButtonBuilder().setCustomId('finish_setup').setLabel('Finish & Save').setStyle(ButtonStyle.Success).setEmoji('💾')
+            new ButtonBuilder()
+                .setCustomId('add_question')
+                .setLabel('Add Question')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('➕')
+                .setDisabled(session.data.questions.length >= 5), // Limit to 5
+            new ButtonBuilder()
+                .setCustomId('finish_setup')
+                .setLabel('Finish & Save')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('💾')
         );
 
     let qMsg: Message;
+    // ... [Same helper logic for qMsg] ...
     if (session.msgId) {
         try {
             qMsg = await channel.messages.fetch(session.msgId);
@@ -488,17 +531,23 @@ async function renderQuestionsStep(channel: TextChannel, session: RegistrationSe
     const btnCollector = qMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 600000 });
 
     btnCollector.on('collect', async i => {
-        if (i.user.id !== session.userId) return; // Basic security check
+        if (i.user.id !== session.userId) return;
 
-        if (i.customId === 'add_question') {
-            const modal = new ModalBuilder().setCustomId('addQuestionModal').setTitle("Add Question");
-            const input = new TextInputBuilder().setCustomId('question_text').setLabel("Question").setStyle(TextInputStyle.Paragraph).setRequired(true);
-            modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-            await i.showModal(modal);
-        } else if (i.customId === 'finish_setup') {
-            await i.deferUpdate();
-            btnCollector.stop();
-            await finalizeRegistration(channel, session);
+        try {
+            if (i.customId === 'add_question') {
+                const modal = new ModalBuilder().setCustomId('addQuestionModal').setTitle("Add Question");
+                const input = new TextInputBuilder().setCustomId('question_text').setLabel("Question").setStyle(TextInputStyle.Paragraph).setRequired(true);
+                modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+                await i.showModal(modal);
+            } else if (i.customId === 'finish_setup') {
+                if (i.replied || i.deferred) return; // Prevent double ack
+                await i.deferUpdate();
+                btnCollector.stop();
+                await finalizeRegistration(channel, session);
+            }
+        } catch (err) {
+            console.error("Interaction Error:", err);
+            // Don't try to reply again if already crashed
         }
     });
 }
@@ -539,15 +588,43 @@ async function finalizeRegistration(channel: TextChannel, session: RegistrationS
             migrationStart: d.migrationStart || null,
             migrationEnd: d.migrationEnd || null,
             imageUrl: d.imageUrl || null,
-            questions: (d.questions && d.questions.length > 0) ? d.questions.join('\n') : null
+            questions: (d.questions && d.questions.length > 0) ? d.questions.join('@@@') : null
         };
 
-        await prisma.kingdom.create({
+        const kd = await prisma.kingdom.create({
             data: payload
         });
 
+        // Notify Staff
+        if (config.logChannelId) {
+            try {
+                const logChannel = await channel.guild.channels.fetch(config.logChannelId) as TextChannel;
+                if (logChannel) {
+                    const embed = new EmbedBuilder()
+                        .setTitle("🆕 New Kingdom Registration")
+                        .setDescription(`Kingdom **#${kd.kdNumber}** has been registered by <@${kd.ownerId}>.\n**Status:** Pending Verification`)
+                        .addFields(
+                            { name: 'Power Req', value: formatNumber(kd.powerReq), inline: true },
+                            { name: 'KP Req', value: kd.kpMultiplier ? `${kd.kpMultiplier}x` : formatNumber(kd.kpReq), inline: true },
+                            { name: 'Seed', value: kd.seed, inline: true }
+                        )
+                        .setColor(0xFFA500)
+                        .setTimestamp();
+
+                    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                        new ButtonBuilder().setCustomId(`approve_kd_${kd.id}`).setLabel('Verificar').setStyle(ButtonStyle.Success),
+                        new ButtonBuilder().setCustomId(`reject_kd_${kd.id}`).setLabel('Rechazar').setStyle(ButtonStyle.Danger)
+                    );
+
+                    await logChannel.send({ embeds: [embed], components: [row] });
+                }
+            } catch (e) {
+                console.error("Failed to log registration:", e);
+            }
+        }
+
         // ... (rest of finalization)
-        await channel.send("🎉 **Kingdom Registered Successfully!**\nDeleting channel in 10 seconds...");
+        await channel.send("🎉 **Kingdom Registered Successfully!**\n⚠️ **One last step:** Your kingdom is **Pending Verification** by Staff.\nIt will appear in search results once approved.\nDeleting channel in 10 seconds...");
         setTimeout(() => channel.delete().catch(() => { }), 10000);
 
     } catch (error) {
@@ -559,7 +636,295 @@ async function finalizeRegistration(channel: TextChannel, session: RegistrationS
 
 
 export async function editKingdom(interaction: ChatInputCommandInteraction) {
-    await interaction.reply({ content: "Edit command is under maintenance to match new wizard.", flags: MessageFlags.Ephemeral });
+    const { user, guild } = interaction;
+    if (!guild) return;
+
+    // Check Permissions (Admin/King)
+    const member = await guild.members.fetch(user.id);
+    const kingRoleId = config.kingRoleId;
+    const isAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
+    const isKing = kingRoleId ? member.roles.cache.has(kingRoleId) : false;
+
+    if (!isAdmin && !isKing) {
+        await interaction.reply({ content: "🚫 You need the **King** role or **Administrator** permissions.", flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    // Find Kingdom
+    // If Admin and provided 'kd', search by that. Else search by ownerId.
+    const kdNumOption = interaction.options.getString('kd');
+    let kingdom;
+
+    if (kdNumOption && isAdmin) {
+        kingdom = await prisma.kingdom.findFirst({ where: { kdNumber: kdNumOption } });
+    } else {
+        kingdom = await prisma.kingdom.findFirst({ where: { ownerId: user.id } });
+    }
+
+    if (!kingdom) {
+        await interaction.reply({ content: "⚠️ No registered kingdom found linked to you.\nAdmins can use `/edit-kingdom kd:<number>` to edit others.", flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    // Menu Embed
+    const getEmbed = () => new EmbedBuilder()
+        .setTitle(`🛠️ Edit Kingdom #${kingdom.kdNumber}`)
+        .setDescription(`**Name:** ${kingdom.name}\n**Seed:** ${kingdom.seed}\n**Power Req:** ${formatNumber(kingdom.powerReq)}\n**KP Req:** ${formatNumber(kingdom.kpReq)}`)
+        .addFields(
+            { name: "Migration", value: `Start: ${kingdom.migrationStart ? new Date(kingdom.migrationStart).toLocaleDateString() : 'N/A'}\nEnd: ${kingdom.migrationEnd ? new Date(kingdom.migrationEnd).toLocaleDateString() : 'N/A'}\nSlots: ${kingdom.migrantSlots || 0}`, inline: true },
+            { name: "Stats", value: `KvK: ${kingdom.kvkWins}W / ${kingdom.kvkLosses}L\nTotal KP: ${formatNumber(kingdom.totalKp || 0)}`, inline: true }
+        )
+        .setColor(0x00AAFF);
+
+    const getRow = () => new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId('edit_menu')
+            .setPlaceholder('Select category to edit...')
+            .addOptions(
+                new StringSelectMenuOptionBuilder().setLabel('General Info (Name, Seed, Reqs)').setValue('edit_general').setEmoji('📝'),
+                new StringSelectMenuOptionBuilder().setLabel('Migration (Dates, Slots)').setValue('edit_migration').setEmoji('📅'),
+                new StringSelectMenuOptionBuilder().setLabel('Kingdom Stats (KvK, Total KP)').setValue('edit_stats').setEmoji('📊'),
+                new StringSelectMenuOptionBuilder().setLabel('Questions').setValue('edit_questions').setEmoji('❓'),
+                new StringSelectMenuOptionBuilder().setLabel('Banner Image').setValue('edit_image').setEmoji('🖼️'),
+                new StringSelectMenuOptionBuilder().setLabel('Close Menu').setValue('close_menu').setEmoji('❌')
+            )
+    );
+
+    await interaction.reply({ embeds: [getEmbed()], components: [getRow()] });
+    const replyMsg = await interaction.fetchReply();
+
+    const collector = replyMsg.createMessageComponentCollector({ componentType: ComponentType.StringSelect, time: 300000 });
+
+    collector.on('collect', async i => {
+        if (i.user.id !== user.id) {
+            await i.reply({ content: "Not your menu.", flags: MessageFlags.Ephemeral });
+            return;
+        }
+
+        const choice = i.values[0];
+
+        try {
+            if (choice === 'close_menu') {
+                await i.update({ content: '✅ Menu closed.', components: [] });
+                collector.stop();
+                return;
+            }
+
+            if (choice === 'edit_general') {
+                const modal = new ModalBuilder().setCustomId('edit_general_modal').setTitle('Edit General Info');
+
+                const r1 = new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('name').setLabel('Kingdom Name').setValue(kingdom.name || '').setStyle(TextInputStyle.Short).setRequired(true));
+                const r2 = new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('seed').setLabel('Seed (A, B, C, D)').setValue(kingdom.seed || '').setStyle(TextInputStyle.Short).setRequired(true));
+                const r3 = new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('power').setLabel('Power Req (e.g. 30m)').setValue(formatNumber(kingdom.powerReq)).setStyle(TextInputStyle.Short).setRequired(true));
+                const r4 = new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('kp').setLabel('KP Req (2b or 4x)').setValue(formatNumber(kingdom.kpReq)).setStyle(TextInputStyle.Short).setRequired(true));
+
+                modal.addComponents(r1, r2, r3, r4);
+
+                await i.showModal(modal);
+
+                const submitted = await i.awaitModalSubmit({ time: 60000, filter: s => s.user.id === user.id && s.customId === 'edit_general_modal' });
+
+                // Parse
+                const name = submitted.fields.getTextInputValue('name');
+                const seed = submitted.fields.getTextInputValue('seed');
+                const power = parseStatsInput(submitted.fields.getTextInputValue('power'));
+                // KP handling (simple parse for now, loosing multiplier context in simple modal unless we parse 'x')
+                const kpRaw = submitted.fields.getTextInputValue('kp');
+                let kp = BigInt(0), kpMul;
+                if (kpRaw.toLowerCase().endsWith('x')) {
+                    kpMul = parseFloat(kpRaw.replace('x', ''));
+                } else {
+                    kp = parseStatsInput(kpRaw);
+                }
+
+                await prisma.kingdom.update({ where: { id: kingdom.id }, data: { name, seed, powerReq: power, kpReq: kp, kpMultiplier: kpMul || null } });
+
+                // Refresh local object
+                kingdom = await prisma.kingdom.findUnique({ where: { id: kingdom.id } });
+                await submitted.update({ embeds: [getEmbed()], components: [getRow()] });
+
+            } else if (choice === 'edit_migration') {
+                const modal = new ModalBuilder().setCustomId('edit_mig_modal').setTitle('Edit Migration');
+                const startStr = kingdom.migrationStart ? new Date(kingdom.migrationStart).toLocaleDateString('en-GB') : ''; // DD/MM/YYYY
+                const endStr = kingdom.migrationEnd ? new Date(kingdom.migrationEnd).toLocaleDateString('en-GB') : '';
+
+                modal.addComponents(
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('start').setLabel('Start Date (DD/MM/YYYY)').setValue(startStr).setStyle(TextInputStyle.Short).setRequired(false)),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('end').setLabel('End Date (DD/MM/YYYY)').setValue(endStr).setStyle(TextInputStyle.Short).setRequired(false)),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('slots').setLabel('Slots').setValue(kingdom.migrantSlots?.toString() || "0").setStyle(TextInputStyle.Short).setRequired(true))
+                );
+                await i.showModal(modal);
+
+                const submitted = await i.awaitModalSubmit({ time: 60000, filter: s => s.user.id === user.id });
+
+                // Helper to parse DD/MM/YYYY
+                const parseD = (str: string) => {
+                    if (!str) return null;
+                    const parts = str.trim().split(/\/|-/);
+                    if (parts.length !== 3) return null;
+                    // assume dd/mm/yyyy
+                    return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                };
+
+                const start = parseD(submitted.fields.getTextInputValue('start'));
+                const end = parseD(submitted.fields.getTextInputValue('end'));
+                const slots = parseInt(submitted.fields.getTextInputValue('slots'));
+
+                await prisma.kingdom.update({ where: { id: kingdom.id }, data: { migrationStart: start, migrationEnd: end, migrantSlots: isNaN(slots) ? 0 : slots } });
+                kingdom = await prisma.kingdom.findUnique({ where: { id: kingdom.id } });
+                await submitted.update({ embeds: [getEmbed()], components: [getRow()] });
+
+            } else if (choice === 'edit_stats') {
+                const modal = new ModalBuilder().setCustomId('edit_stats_modal').setTitle('Edit Statistics');
+                modal.addComponents(
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('wins').setLabel('KvK Wins').setValue(kingdom.kvkWins.toString()).setStyle(TextInputStyle.Short).setRequired(true)),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('losses').setLabel('KvK Losses').setValue(kingdom.kvkLosses.toString()).setStyle(TextInputStyle.Short).setRequired(true)),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('tot_kp').setLabel('Total Kingdom KP').setValue(formatNumber(kingdom.totalKp || 0)).setStyle(TextInputStyle.Short).setRequired(true))
+                );
+                await i.showModal(modal);
+
+                const submitted = await i.awaitModalSubmit({ time: 60000, filter: s => s.user.id === user.id });
+
+                const w = parseInt(submitted.fields.getTextInputValue('wins'));
+                const l = parseInt(submitted.fields.getTextInputValue('losses'));
+                const k = parseStatsInput(submitted.fields.getTextInputValue('tot_kp'));
+
+                await prisma.kingdom.update({ where: { id: kingdom.id }, data: { kvkWins: w, kvkLosses: l, totalKp: k } });
+                kingdom = await prisma.kingdom.findUnique({ where: { id: kingdom.id } });
+                await submitted.update({ embeds: [getEmbed()], components: [getRow()] });
+
+            } else if (choice === 'edit_questions') {
+                // For questions, Modal is tricky for list. 
+                // Let's offer a Modal to "Paste all questions separated by @@@" or "Clear".
+                // Or just a single big text area "Enter Questions (one per line)".
+                const modal = new ModalBuilder().setCustomId('edit_q_modal').setTitle('Edit Application Questions');
+                // Load current
+                const currQ = kingdom.questions ? kingdom.questions.split('@@@').join('\n') : '';
+                modal.addComponents(
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('qs').setLabel('Questions (One per line)').setValue(currQ.substring(0, 4000)).setStyle(TextInputStyle.Paragraph).setRequired(false))
+                );
+                await i.showModal(modal);
+
+                const submitted = await i.awaitModalSubmit({ time: 60000, filter: s => s.user.id === user.id });
+                const raw = submitted.fields.getTextInputValue('qs');
+
+                // Split by newline and save joined by @@@
+                const qList = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+                await prisma.kingdom.update({ where: { id: kingdom.id }, data: { questions: qList.join('@@@') } });
+                kingdom = await prisma.kingdom.findUnique({ where: { id: kingdom.id } });
+                await submitted.update({ content: "✅ Questions updated!", embeds: [getEmbed()], components: [getRow()] });
+
+            } else if (choice === 'edit_image') {
+                // Image is hard via Modal (can't upload).
+                // Ask user to paste URL in modal.
+                const modal = new ModalBuilder().setCustomId('edit_img_modal').setTitle('Edit Banner Image');
+                modal.addComponents(
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('url').setLabel('Image URL').setValue(kingdom.imageUrl || '').setStyle(TextInputStyle.Short).setRequired(false))
+                );
+                await i.showModal(modal);
+
+                const submitted = await i.awaitModalSubmit({ time: 60000, filter: s => s.user.id === user.id });
+                const link = submitted.fields.getTextInputValue('url');
+
+                await prisma.kingdom.update({ where: { id: kingdom.id }, data: { imageUrl: link } });
+                kingdom = await prisma.kingdom.findUnique({ where: { id: kingdom.id } });
+                await submitted.update({ embeds: [getEmbed()], components: [getRow()] });
+            }
+
+        } catch (err) {
+            console.error(err);
+            // If waitModalSubmit times out or fails
+        }
+    });
+
 }
 export async function handleRegisterModal(interaction: ModalSubmitInteraction) { }
 export async function handleEditKingdomModal(interaction: ModalSubmitInteraction) { }
+
+export async function verifyKingdom(interaction: ChatInputCommandInteraction) {
+    const { user, guild, options } = interaction;
+    if (!guild) return;
+
+    const member = await guild.members.fetch(user.id);
+    if (!member.permissions.has(PermissionFlagsBits.Administrator) && !member.roles.cache.has(config.adminRoleId || '')) {
+        await interaction.reply({ content: "🚫 Staff Only.", flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    const kdNum = options.getString('kd');
+    const kingdom = await prisma.kingdom.findFirst({ where: { kdNumber: kdNum } });
+
+    if (!kingdom) {
+        await interaction.reply({ content: `❌ Kingdom #${kdNum} not found.`, flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    if (kingdom.verified) {
+        await interaction.reply({ content: `Kingdom #${kdNum} is already verified.`, flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    await prisma.kingdom.update({ where: { id: kingdom.id }, data: { verified: true } });
+    await interaction.reply(`✅ **Kingdom #${kingdom.kdNumber}** has been **VERIFIED** and is now visible in search!`);
+
+    try {
+        const owner = await guild.members.fetch(kingdom.ownerId);
+        if (owner) {
+            await owner.send(`🎉 Your Kingdom **#${kingdom.kdNumber}** has been approved and verified by SOCH Staff! It is now searchable.`);
+        }
+    } catch (e) {
+        // Owner DMs closed or left server
+    }
+}
+
+export async function handleKingdomVerificationButtons(interaction: ButtonInteraction) {
+    const { customId, guild } = interaction;
+    if (!guild) return;
+
+    // Permissions check (Staff only)
+    const member = await guild.members.fetch(interaction.user.id);
+    if (!member.permissions.has(PermissionFlagsBits.Administrator) && !member.roles.cache.has(config.adminRoleId || '')) {
+        await interaction.reply({ content: "🚫 Staff Only.", flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    const action = customId.startsWith('approve_kd_') ? 'approve' : 'reject';
+    const kdIdStr = customId.replace('approve_kd_', '').replace('reject_kd_', '');
+    const kdId = parseInt(kdIdStr);
+
+    const kingdom = await prisma.kingdom.findUnique({ where: { id: kdId } });
+
+    if (!kingdom) {
+        await interaction.reply({ content: "❌ Kingdom not found (might have been deleted).", flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    if (action === 'approve') {
+        if (kingdom.verified) {
+            await interaction.reply({ content: "Already verified.", flags: MessageFlags.Ephemeral });
+            return;
+        }
+
+        await prisma.kingdom.update({ where: { id: kdId }, data: { verified: true } });
+        await interaction.update({ content: `✅ **Kingdom #${kingdom.kdNumber} Verified** by ${interaction.user}.`, components: [] });
+
+        // Notify Owner
+        try {
+            const owner = await guild.members.fetch(kingdom.ownerId);
+            if (owner) await owner.send(`🎉 Your Kingdom **#${kingdom.kdNumber}** has been **APPROVED**!`);
+        } catch (e) { }
+
+    } else {
+        // Reject - Delete it? Or just mark rejected? Usually delete if it's spam.
+        // User asked to "Accept or Reject". I'll delete to keep DB clean.
+        await prisma.kingdom.delete({ where: { id: kdId } });
+        await interaction.update({ content: `❌ **Kingdom #${kingdom.kdNumber} Rejected** (Deleted) by ${interaction.user}.`, components: [] });
+
+        // Notify Owner
+        try {
+            const owner = await guild.members.fetch(kingdom.ownerId);
+            if (owner) await owner.send(`❌ Your Kingdom **#${kingdom.kdNumber}** registration was rejected by Staff.`);
+        } catch (e) { }
+    }
+}

@@ -34,6 +34,7 @@ model Kingdom {
   migrationOpen  DateTime?
   migrationClose DateTime?
   isPaid      Boolean  @default(false)
+  verified    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   tickets     Ticket[]
@@ -49,4 +50,39 @@ model Ticket {
   kingdom   Kingdom  @relation(fields: [kingdomId], references: [id])
   createdAt DateTime @default(now())
   closed    Boolean  @default(false)
+}
+
+model UserProfile {
+  id            String   @id @default(uuid())
+  discordId     String   @unique
+  ingameName    String
+  ingameId      String
+  power         BigInt
+  kp            BigInt
+  dead          BigInt
+  kingdomNumber String
+  imageUrl      String
+  farms         Int      @default(0)
+  ch25Farms     Int      @default(0)
+  updatedAt     DateTime @updatedAt
+}
+model RecruitmentThread {
+  id              String   @id // Channel ID of the thread
+  ownerId         String
+  kingdomId       Int?
+  contentHash     String?  // Hash of the starter message content
+  lastBumped      DateTime @default(now())
+  bumpStrikeCount Int      @default(0)
+  bumpBanExpires  DateTime?
+  createdAt       DateTime @default(now())
+}
+
+model BumpUser {
+  id          Int      @id @default(autoincrement())
+  threadId    String   @index
+  userId      String   @index
+  strikeCount Int      @default(0)
+  banExpires  DateTime?
+  lastBumped  DateTime @default(now())
+  @@unique([threadId, userId])
 }

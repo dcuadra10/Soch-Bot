@@ -1,26 +1,18 @@
-import { REST, Routes, SlashCommandBuilder } from 'discord.js';
+import { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { config } from './config';
 
 const commands = [
     new SlashCommandBuilder()
         .setName('register-kingdom')
         .setDescription('Start the Kingdom Registration Wizard')
-        .setDefaultMemberPermissions(0), // No default perms, handled in code check
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder()
         .setName('find-kingdom')
-        .setDescription('Find a kingdom matching your stats')
-        .addStringOption(option =>
-            option.setName('power')
-                .setDescription('Your Power (e.g. 50m, 2b)')
-                .setRequired(true))
-        .addStringOption(option =>
-            option.setName('kp')
-                .setDescription('Your Kill Points (e.g. 300m, 1b)')
-                .setRequired(true))
+        .setDescription('Find a kingdom matching your stats (Seed required)')
         .addStringOption(option =>
             option.setName('seed')
                 .setDescription('Preferred Seed')
-                .setRequired(false)
+                .setRequired(true)
                 .addChoices(
                     { name: 'Imperium', value: 'Imperium' },
                     { name: 'A', value: 'A' },
@@ -67,6 +59,13 @@ const commands = [
         .setName('edit-kingdom')
         .setDescription('Edit your registered kingdom (Kings only)'),
     new SlashCommandBuilder()
+        .setName('verify-kingdom')
+        .setDescription('Approve a kingdom to show up in search (Staff Only)')
+        .addStringOption(option =>
+            option.setName('kd')
+                .setDescription('Kingdom Number (e.g. 1960)')
+                .setRequired(true)),
+    new SlashCommandBuilder()
         .setName('claim-king')
         .setDescription('Submit proof to claim King status of a kingdom')
         .addStringOption(option =>
@@ -82,8 +81,60 @@ const commands = [
                 .setDescription('Screenshot of your profile showing King title')
                 .setRequired(true)),
     new SlashCommandBuilder()
+        .setName('create-account')
+        .setDescription('Create your Governor Profile for applications (Required before applying)')
+        .addStringOption(o => o.setName('name').setDescription('In-game Name').setRequired(true))
+        .addStringOption(o => o.setName('id').setDescription('In-game ID').setRequired(true))
+        .addStringOption(o => o.setName('power').setDescription('Total Power (e.g. 50m)').setRequired(true))
+        .addStringOption(o => o.setName('kp').setDescription('Total Kill Points (e.g. 1b)').setRequired(true))
+        .addStringOption(o => o.setName('dead').setDescription('Dead Troops (e.g. 5m)').setRequired(true))
+        .addStringOption(o => o.setName('kingdom').setDescription('Current Kingdom Number').setRequired(true))
+        .addIntegerOption(o => o.setName('farms').setDescription('Number of Farm Accounts').setRequired(true))
+        .addIntegerOption(o => o.setName('ch25').setDescription('Number of CH25 Farms').setRequired(true))
+        .addAttachmentOption(o => o.setName('image').setDescription('Screenshot of your In-game Profile').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('edit-account')
+        .setDescription('Edit specific fields of your Governor Profile')
+        .addStringOption(o => o.setName('name').setDescription('In-game Name').setRequired(false))
+        .addStringOption(o => o.setName('id').setDescription('In-game ID').setRequired(false))
+        .addStringOption(o => o.setName('power').setDescription('Total Power').setRequired(false))
+        .addStringOption(o => o.setName('kp').setDescription('Total KP').setRequired(false))
+        .addStringOption(o => o.setName('dead').setDescription('Dead Troops').setRequired(false))
+        .addStringOption(o => o.setName('kingdom').setDescription('Current Kingdom').setRequired(false))
+        .addIntegerOption(o => o.setName('farms').setDescription('Number of Farms').setRequired(false))
+        .addIntegerOption(o => o.setName('ch25').setDescription('Number of CH25 Farms').setRequired(false))
+        .addAttachmentOption(o => o.setName('image').setDescription('New Profile Screenshot').setRequired(false)),
+    new SlashCommandBuilder()
+        .setName('view-profile')
+        .setDescription('View a Governor Profile')
+        .addUserOption(o => o.setName('user').setDescription('The user to view (Default: Yourself)').setRequired(false)),
+    new SlashCommandBuilder()
+        .setName('list-profiles')
+        .setDescription('List all registered Governor Profiles (Admin only)')
+        .setDefaultMemberPermissions(0),
+    new SlashCommandBuilder()
+        .setName('delete-profile')
+        .setDescription('Delete your profile or another user\'s (Admin only)')
+        .addUserOption(o => o.setName('user').setDescription('The user to delete (Admin usage)').setRequired(false)),
+    new SlashCommandBuilder()
         .setName('help')
         .setDescription('Show list of available commands'),
+    new SlashCommandBuilder()
+        .setName('bump')
+        .setDescription('Bump this post to the top (Every 6 hours)'),
+    new SlashCommandBuilder()
+        .setName('remake')
+        .setDescription('Delete and recreate this post to update info (Owner/Admin only)'),
+    new SlashCommandBuilder()
+        .setName('unban-post')
+        .setDescription('Remove a bump ban from a recruitment post (Admin Only)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addChannelOption(o => o.setName('post').setDescription('The thread to unban (Default: Current channel)').setRequired(false)),
+    new SlashCommandBuilder()
+        .setName('check-post')
+        .setDescription('Check status/bans of a recruitment post (Admin Only)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addChannelOption(o => o.setName('post').setDescription('The thread to check (Default: Current channel)').setRequired(false)),
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(config.token!);
