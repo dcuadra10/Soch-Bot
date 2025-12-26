@@ -5,6 +5,7 @@ import { findKingdom, handleScanApply, handleCloseTicket, handleConfirmClose } f
 import { listKingdoms } from '../commands/list';
 import { claimKing, handleClaimButtons } from '../commands/claim';
 import { helpCommand } from '../commands/help';
+import { guideCommand } from '../commands/guide';
 import { bumpCommand, remakeCommand } from '../commands/forum';
 import { unbanPostCommand, checkPostCommand } from '../commands/forum-admin';
 
@@ -43,6 +44,8 @@ export async function interactionCreate(interaction: Interaction) {
                 await claimKing(interaction);
             } else if (commandName === 'help') {
                 await helpCommand(interaction);
+            } else if (commandName === 'guide') {
+                await guideCommand(interaction);
             } else if (commandName === 'bump') {
                 await bumpCommand(interaction);
             } else if (commandName === 'remake') {

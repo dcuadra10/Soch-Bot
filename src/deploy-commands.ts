@@ -120,6 +120,9 @@ const commands = [
         .setName('help')
         .setDescription('Show list of available commands'),
     new SlashCommandBuilder()
+        .setName('guide')
+        .setDescription('Show complete SOCH bot guide'),
+    new SlashCommandBuilder()
         .setName('bump')
         .setDescription('Bump this post to the top (Every 6 hours)'),
     new SlashCommandBuilder()
