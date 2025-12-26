@@ -82,6 +82,10 @@ export async function handleForumMessage(message: Message) {
     const threadId = message.channel.id;
     const userId = message.author.id;
 
+    // IGNORE STARTER MESSAGE (The Post Itself)
+    // In Forum Channels, the Thread ID is the same as the Starter Message ID
+    if (message.id === threadId) return;
+
     // Delete the offending message
     try { await message.delete(); } catch { }
 
