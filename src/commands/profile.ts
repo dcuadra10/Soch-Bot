@@ -1,6 +1,27 @@
-import { ChatInputCommandInteraction, MessageFlags, EmbedBuilder } from 'discord.js';
-import { prisma } from '../config';
+import { ChatInputCommandInteraction, MessageFlags, EmbedBuilder, Attachment, TextChannel } from 'discord.js';
+import { prisma, config, client } from '../config';
 import { parseStatsInput, formatNumber } from '../utils/format';
+
+async function persistImage(attachment: Attachment): Promise<string> {
+    if (!config.logChannelId) return attachment.url; // Fallback if no log channel
+
+    try {
+        const channel = await client.channels.fetch(config.logChannelId) as TextChannel;
+        if (!channel || !channel.isTextBased()) return attachment.url;
+
+        const sent = await channel.send({
+            content: `Image upload for profile persistence (Size: ${attachment.size})`,
+            files: [attachment.url]
+        });
+
+        if (sent.attachments.size > 0) {
+            return sent.attachments.first()!.url;
+        }
+    } catch (e) {
+        console.error("Failed to persist image:", e);
+    }
+    return attachment.url;
+}
 
 export async function createAccount(interaction: ChatInputCommandInteraction) {
     const name = interaction.options.getString('name', true);
@@ -39,7 +60,7 @@ export async function createAccount(interaction: ChatInputCommandInteraction) {
                 kingdomNumber: kingdom,
                 farms: farms,
                 ch25Farms: ch25,
-                imageUrl: image.url
+                imageUrl: await persistImage(image)
             }
         });
 
@@ -93,7 +114,7 @@ export async function editAccount(interaction: ChatInputCommandInteraction) {
         if (kingdom) data.kingdomNumber = kingdom;
         if (farms !== null) data.farms = farms;
         if (ch25 !== null) data.ch25Farms = ch25;
-        if (image) data.imageUrl = image.url;
+        if (image) data.imageUrl = await persistImage(image);
 
         const updated = await prisma.userProfile.update({
             where: { discordId: interaction.user.id },
