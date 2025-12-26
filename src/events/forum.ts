@@ -114,15 +114,17 @@ export async function handleForumMessage(message: Message) {
 
     // Update embed with strike list
     try {
-        const starter = await (message.channel as ThreadChannel).fetchStarterMessage();
-        const embeds = starter.embeds;
-        if (embeds.length) {
-            const embed = EmbedBuilder.from(embeds[0]);
-            const users = await prisma.bumpUser.findMany({ where: { threadId } });
-            const lines = users.map(u => `<@${u.userId}>: ${u.banExpires && u.banExpires > new Date() ? `BANNED until <t:${Math.floor(u.banExpires.getTime() / 1000)}:R>` : `${u.strikeCount} strike(s)`}`);
-            const baseDesc = embed.data.description?.split('⚠️ **Recruitment Thread Warning**')[0] || embed.data.description || '';
-            embed.setDescription(`${baseDesc}\n\n**User Strikes / Bans:**\n${lines.join('\n')}`);
-            await starter.edit({ embeds: [embed] });
+        const starter = await (message.channel as ThreadChannel).fetchStarterMessage().catch(() => null);
+        if (starter) {
+            const embeds = starter.embeds;
+            if (embeds.length > 0) {
+                const embed = EmbedBuilder.from(embeds[0]);
+                const users = await prisma.bumpUser.findMany({ where: { threadId } });
+                const lines = users.map(u => `<@${u.userId}>: ${u.banExpires && u.banExpires > new Date() ? `BANNED until <t:${Math.floor(u.banExpires.getTime() / 1000)}:R>` : `${u.strikeCount} strike(s)`}`);
+                const baseDesc = embed.data.description?.split('⚠️ **Recruitment Thread Warning**')[0] || embed.data.description || '';
+                embed.setDescription(`${baseDesc}\n\n**User Strikes / Bans:**\n${lines.join('\n')}`);
+                await starter.edit({ embeds: [embed] });
+            }
         }
     } catch (e) {
         console.error('Failed to update embed with strikes', e);
