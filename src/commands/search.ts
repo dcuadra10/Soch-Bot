@@ -1,12 +1,23 @@
 // @ts-nocheck
-import { ChatInputCommandInteraction, ButtonInteraction, TextChannel, ChannelType, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ModalSubmitInteraction } from 'discord.js';
+import { ChatInputCommandInteraction, ButtonInteraction, TextChannel, ChannelType, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ModalSubmitInteraction, Interaction } from 'discord.js';
 import { prisma } from '../config';
 import { parseStatsInput, formatNumber } from '../utils/format';
 
 export async function findKingdom(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const seedInput = interaction.options.getString('seed') || '';
+    const seed = interaction.options.getString('seed') || '';
+    await renderKingdomSearch(interaction, seed, 0);
+}
 
+export async function handleSearchPagination(interaction: ButtonInteraction) {
+    // id: search_page_PAGE_SEED
+    const parts = interaction.customId.split('_');
+    const page = parseInt(parts[2]);
+    const seed = parts.slice(3).join('_'); // Just in case
+    await renderKingdomSearch(interaction, seed, page);
+}
+
+async function renderKingdomSearch(interaction: Interaction, seedInput: string, page: number) {
     // Fetch User Profile
     const profile = await prisma.userProfile.findUnique({ where: { discordId: interaction.user.id } });
 
@@ -27,10 +38,11 @@ export async function findKingdom(interaction: ChatInputCommandInteraction) {
 
     // Fetch all (filtered by seed)
     const allKingdoms = await prisma.kingdom.findMany({
-        where: whereClause
+        where: whereClause,
+        orderBy: { kdNumber: 'asc' }
     });
 
-    const kingdoms = allKingdoms.filter((k: any) => {
+    const filteredKingdoms = allKingdoms.filter((k: any) => {
         // If no profile, show everything matching the seed (skip stat checks)
         if (!hasProfile) return true;
 
@@ -51,18 +63,32 @@ export async function findKingdom(interaction: ChatInputCommandInteraction) {
         if (kpVal && reqKp > BigInt(0) && kpVal < reqKp) return false;
 
         return true;
-    }).slice(0, 5);
+    });
 
-    if (kingdoms.length === 0) {
-        await interaction.editReply({ content: hasProfile ? "No kingdoms found matching your stats." : "No kingdoms found for this seed." });
+    const ITEMS_PER_PAGE = 5;
+    const totalPages = Math.ceil(filteredKingdoms.length / ITEMS_PER_PAGE);
+    const currentPage = Math.max(0, Math.min(page, totalPages - 1));
+
+    if (filteredKingdoms.length === 0) {
+        const msg = hasProfile ? "No kingdoms found matching your stats." : "No kingdoms found for this seed.";
+        if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+        } else {
+            // @ts-ignore
+            await interaction.editReply({ content: msg, embeds: [], components: [] });
+        }
         return;
     }
+
+    const start = currentPage * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    const currentKingdoms = filteredKingdoms.slice(start, end);
 
     const embeds: EmbedBuilder[] = [];
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
     let currentRow = new ActionRowBuilder<ButtonBuilder>();
 
-    kingdoms.forEach((k: any, index) => {
+    currentKingdoms.forEach((k: any) => {
         let kpDisplay = '';
         if (k.kpMultiplier) {
             if (hasProfile) {
@@ -118,11 +144,41 @@ export async function findKingdom(interaction: ChatInputCommandInteraction) {
         rows.push(currentRow);
     }
 
-    const introText = hasProfile
-        ? `**Matching Kingdoms**\nBased on your profile (Power: ${formatNumber(powerVal)}, KP: ${formatNumber(kpVal)}):`
-        : `**Matching Kingdoms**\n⚠️ No Profile Found. Showing all for this Seed.`;
+    // Pagination Row
+    if (totalPages > 1) {
+        const pageRow = new ActionRowBuilder<ButtonBuilder>();
+        pageRow.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`search_page_${currentPage - 1}_${seedInput}`)
+                .setLabel('⬅️ Previous')
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(currentPage === 0),
+            new ButtonBuilder()
+                .setCustomId('search_page_num')
+                .setLabel(`${currentPage + 1}/${totalPages}`)
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true),
+            new ButtonBuilder()
+                .setCustomId(`search_page_${currentPage + 1}_${seedInput}`)
+                .setLabel('Next ➡️')
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(currentPage === totalPages - 1)
+        );
+        rows.push(pageRow);
+    }
 
-    await interaction.editReply({ content: introText, embeds: embeds, components: rows });
+    const introText = hasProfile
+        ? `**Matching Kingdoms** (Page ${currentPage + 1}/${totalPages})\nBased on your profile (Power: ${formatNumber(powerVal)}, KP: ${formatNumber(kpVal)}):`
+        : `**Matching Kingdoms** (Page ${currentPage + 1}/${totalPages})\n⚠️ No Profile Found. Showing all matching seed.`;
+
+    const payload = { content: introText, embeds: embeds, components: rows, flags: MessageFlags.Ephemeral };
+
+    if (interaction.isButton()) {
+        await interaction.update(payload);
+    } else {
+        // @ts-ignore
+        await interaction.editReply(payload);
+    }
 }
 
 export async function handleScanApply(interaction: ButtonInteraction) {

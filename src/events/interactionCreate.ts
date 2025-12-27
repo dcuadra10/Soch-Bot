@@ -1,8 +1,8 @@
 import { Interaction, MessageFlags } from 'discord.js';
 import { registerKingdom, handleRegisterModal, deleteKingdom, setKingdomScore, editKingdom, handleEditKingdomModal, handleAddQuestionModal, setKingdomSlots, verifyKingdom, handleKingdomVerificationButtons } from '../commands/register';
 import { createAccount, editAccount, viewAccount, listAccounts, deleteProfile } from '../commands/profile';
-import { findKingdom, handleScanApply, handleCloseTicket, handleConfirmClose } from '../commands/search';
-import { listKingdoms } from '../commands/list';
+import { findKingdom, handleScanApply, handleCloseTicket, handleConfirmClose, handleSearchPagination } from '../commands/search';
+import { listKingdoms, handleListPagination } from '../commands/list';
 import { claimKing, handleClaimButtons } from '../commands/claim';
 import { helpCommand } from '../commands/help';
 import { guideCommand } from '../commands/guide';
@@ -82,6 +82,10 @@ export async function interactionCreate(interaction: Interaction) {
                 setTimeout(() => interaction.deleteReply().catch(() => { }), 3000);
             } else if (interaction.customId.startsWith('claim_')) {
                 await handleClaimButtons(interaction);
+            } else if (interaction.customId.startsWith('list_page_')) {
+                await handleListPagination(interaction);
+            } else if (interaction.customId.startsWith('search_page_')) {
+                await handleSearchPagination(interaction);
             }
         }
     } catch (error) {
