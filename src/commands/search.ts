@@ -58,14 +58,9 @@ export async function findKingdom(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    const embed = new EmbedBuilder()
-        .setTitle("Matching Kingdoms")
-        .setDescription(hasProfile
-            ? `Kingdoms matching your profile (Power: ${formatNumber(powerVal)}, KP: ${formatNumber(kpVal)}):`
-            : "⚠️ **No Profile Found:** Showing all kingdoms for this Seed.\nUse `/create-account` to filter by your stats!")
-        .setColor(0x00FF00);
-
+    const embeds: EmbedBuilder[] = [];
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+    let currentRow = new ActionRowBuilder<ButtonBuilder>();
 
     kingdoms.forEach((k: any, index) => {
         let kpDisplay = '';
@@ -86,23 +81,32 @@ export async function findKingdom(interaction: ChatInputCommandInteraction) {
         if (k.migrationStart && k.migrationEnd) {
             const tsStart = Math.floor(new Date(k.migrationStart).getTime() / 1000);
             const tsEnd = Math.floor(new Date(k.migrationEnd).getTime() / 1000);
-            migDisplay = `\nMigration: <t:${tsStart}:D> ➡ <t:${tsEnd}:D>`; // D = Long Date (25 December 2025)
+            migDisplay = `\nMigration: <t:${tsStart}:D> ➡ <t:${tsEnd}:D>`;
         } else if (k.migrationStart) {
             const tsStart = Math.floor(new Date(k.migrationStart).getTime() / 1000);
-            migDisplay = `\nMigration Starts: <t:${tsStart}:R>`; // R = Relative (in 5 days)
+            migDisplay = `\nMigration Starts: <t:${tsStart}:R>`;
         }
 
-        embed.addFields({
-            name: `#${k.kdNumber} - ${k.name} (${k.seed}-Seed)${slotsDisplay}`,
-            value: `Score: **${k.score ? k.score : 'N/A'}**\nReq: **${formatNumber(k.powerReq)}** Power, **${kpDisplay}**\nKvK: ${k.kvkWins}W / ${k.kvkLosses}L${totalKpDisplay}${migDisplay}`
-        });
+        const embed = new EmbedBuilder()
+            .setTitle(`#${k.kdNumber} - ${k.name} (${k.seed}-Seed)${slotsDisplay}`)
+            .setColor(0x00FF00)
+            .addFields({
+                name: 'Stats & Reqs',
+                value: `Score: **${k.score ? k.score : 'N/A'}**\nReq: **${formatNumber(k.powerReq)}** Power, **${kpDisplay}**\nKvK: ${k.kvkWins}W / ${k.kvkLosses}L${totalKpDisplay}${migDisplay}`
+            });
 
-        // Limit buttons to 5 per row
-        if (rows.length === 0 || rows[rows.length - 1].components.length >= 5) {
-            rows.push(new ActionRowBuilder<ButtonBuilder>());
+        if (k.imageUrl) {
+            embed.setImage(k.imageUrl);
         }
 
-        rows[rows.length - 1].addComponents(
+        embeds.push(embed);
+
+        // Buttons
+        if (currentRow.components.length >= 5) {
+            rows.push(currentRow);
+            currentRow = new ActionRowBuilder<ButtonBuilder>();
+        }
+        currentRow.addComponents(
             new ButtonBuilder()
                 .setCustomId(`apply_${k.id}`)
                 .setLabel(`Apply #${k.kdNumber}`)
@@ -110,7 +114,15 @@ export async function findKingdom(interaction: ChatInputCommandInteraction) {
         );
     });
 
-    await interaction.editReply({ embeds: [embed], components: rows });
+    if (currentRow.components.length > 0) {
+        rows.push(currentRow);
+    }
+
+    const introText = hasProfile
+        ? `**Matching Kingdoms**\nBased on your profile (Power: ${formatNumber(powerVal)}, KP: ${formatNumber(kpVal)}):`
+        : `**Matching Kingdoms**\n⚠️ No Profile Found. Showing all for this Seed.`;
+
+    await interaction.editReply({ content: introText, embeds: embeds, components: rows });
 }
 
 export async function handleScanApply(interaction: ButtonInteraction) {
