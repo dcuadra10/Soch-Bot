@@ -118,7 +118,7 @@ async function renderKingdomSearch(interaction: Interaction, seedInput: string, 
             .setColor(0x00FF00)
             .addFields({
                 name: 'Stats & Reqs',
-                value: `Score: **${k.score ? k.score : 'N/A'}**\nReq: **${formatNumber(k.powerReq)}** Power, **${kpDisplay}**\nKvK: ${k.kvkWins}W / ${k.kvkLosses}L${totalKpDisplay}${migDisplay}`
+                value: `Score: **${k.score ? k.score : 'N/A'}** | Status: **${k.kvkStatus || 'N/A'}**\nReq: **${formatNumber(k.powerReq)}** Power, **${kpDisplay}**\nKvK: ${k.kvkWins}W / ${k.kvkLosses}L${totalKpDisplay}${migDisplay}`
             });
 
         if (k.imageUrl) {

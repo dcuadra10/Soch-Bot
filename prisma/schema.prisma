@@ -21,6 +21,7 @@ model Kingdom {
   kpMultiplier Float?  // For dynamic KP reqs (e.g. 4x Power)
   kvkWins     Int      @default(0)
   kvkLosses   Int      @default(0)
+  kvkStatus   String?  // kvk1, kvk2, kvk3, kvk4, soc
   totalKp     BigInt?  // Kingdom's total KP (Optional)
   migrantSlots Int?    // Available migrant slots (Optional)
   migrationStart DateTime? // Migration Start Date

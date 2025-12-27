@@ -58,7 +58,7 @@ async function renderList(interaction: Interaction, page: number) {
         const bannerLink = k.imageUrl ? ` | [Banner](${k.imageUrl})` : "";
         embed.addFields({
             name: `#${k.kdNumber} - ${k.name} (${k.seed}-Seed)`,
-            value: `👑 **King**: <@${k.ownerId}>\nScore: **${k.score}** | KvK: ${k.kvkWins}W/${k.kvkLosses}L${bannerLink}\nReqs: **${formatNumber(k.powerReq)}** Power, **${kpReqDisplay}**${openDate}`
+            value: `👑 **King**: <@${k.ownerId}>\nScore: **${k.score}** | Status: **${k.kvkStatus || 'N/A'}**\nKvK: ${k.kvkWins}W/${k.kvkLosses}L${bannerLink}\nReqs: **${formatNumber(k.powerReq)}** Power, **${kpReqDisplay}**${openDate}`
         });
     });
 

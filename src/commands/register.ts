@@ -26,7 +26,7 @@ import { parseStatsInput, formatNumber } from '../utils/format';
 
 interface RegistrationSession {
     userId: string;
-    step: 'KD' | 'NAME' | 'SEED' | 'POWER_REQ' | 'KP_REQ' | 'KVK' | 'TOTAL_KP' | 'INVITE' | 'MIGRATION_START' | 'MIGRATION_END' | 'SLOTS' | 'IMAGE' | 'QUESTIONS';
+    step: 'KD' | 'NAME' | 'SEED' | 'POWER_REQ' | 'KP_REQ' | 'KVK' | 'KVK_STATUS' | 'TOTAL_KP' | 'INVITE' | 'MIGRATION_START' | 'MIGRATION_END' | 'SLOTS' | 'IMAGE' | 'QUESTIONS';
     data: {
         kdNumber?: string;
         name?: string;
@@ -36,6 +36,7 @@ interface RegistrationSession {
         kpMultiplier?: number; // New field
         kvkWins?: number;
         kvkLosses?: number;
+        kvkStatus?: string; // New field
         totalKp?: bigint;
         migrantSlots?: number;
         discordInvite?: string;
@@ -366,8 +367,35 @@ function startWizardCollector(channel: TextChannel, userId: string) {
                     }
                     session.data.kvkWins = wins;
                     session.data.kvkLosses = losses;
-                    session.step = 'TOTAL_KP';
-                    await channel.send("✅ Stats saved.\nWhat is the **Kingdom's Total KP**?\nExample: `500b`, `1.2t` (Trillion), or type `0` if unknown.");
+                    session.step = 'KVK_STATUS';
+
+                    const kvkRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                        ['KvK 1', 'KvK 2', 'KvK 3', 'KvK 4', 'SOC'].map(s =>
+                            new ButtonBuilder().setCustomId(`kvk_${s}`).setLabel(s).setStyle(ButtonStyle.Primary)
+                        )
+                    );
+                    const kvkMsg = await channel.send({ content: "Select your **KvK Season Status**:", components: [kvkRow] });
+
+                    try {
+                        const kvkInt = await kvkMsg.awaitMessageComponent({
+                            filter: i => i.user.id === userId && i.customId.startsWith('kvk_'),
+                            time: 60000,
+                            componentType: ComponentType.Button
+                        });
+                        session.data.kvkStatus = kvkInt.customId.split('_')[1];
+                        session.step = 'TOTAL_KP';
+                        await kvkInt.update({ content: `✅ Status set to **${session.data.kvkStatus}**.`, components: [] });
+                        await channel.send("✅ Stats saved.\nWhat is the **Kingdom's Total KP**?\nExample: `500b`, `1.2t` (Trillion), or type `0` if unknown.");
+                    } catch (e) {
+                        await channel.send("Timed out selecting KvK Status. Type `cancel` to stop.");
+                    }
+                    break;
+
+                case 'KVK_STATUS':
+                    // Just in case they type something instead of clicking (ignore or handle)
+                    // But typically we wait inside the previous case. 
+                    // If we fall through here, it means the session state says KVK_STATUS but message handler picked it up.
+                    // We can just ignore text input here or ask them to click the button.
                     break;
 
                 case 'TOTAL_KP':
@@ -581,6 +609,7 @@ async function finalizeRegistration(channel: TextChannel, session: RegistrationS
             kpMultiplier: d.kpMultiplier || null,
             kvkWins: d.kvkWins!,
             kvkLosses: d.kvkLosses!,
+            kvkStatus: d.kvkStatus || null,
             totalKp: d.totalKp || null,
             migrantSlots: d.migrantSlots || null,
             ownerId: session.userId,
@@ -672,7 +701,7 @@ export async function editKingdom(interaction: ChatInputCommandInteraction) {
         .setDescription(`**Name:** ${kingdom.name}\n**Seed:** ${kingdom.seed}\n**Power Req:** ${formatNumber(kingdom.powerReq)}\n**KP Req:** ${formatNumber(kingdom.kpReq)}`)
         .addFields(
             { name: "Migration", value: `Start: ${kingdom.migrationStart ? new Date(kingdom.migrationStart).toLocaleDateString() : 'N/A'}\nEnd: ${kingdom.migrationEnd ? new Date(kingdom.migrationEnd).toLocaleDateString() : 'N/A'}\nSlots: ${kingdom.migrantSlots || 0}`, inline: true },
-            { name: "Stats", value: `KvK: ${kingdom.kvkWins}W / ${kingdom.kvkLosses}L\nTotal KP: ${formatNumber(kingdom.totalKp || 0)}`, inline: true }
+            { name: "Stats", value: `Status: **${kingdom.kvkStatus || 'N/A'}**\nKvK: ${kingdom.kvkWins}W / ${kingdom.kvkLosses}L\nTotal KP: ${formatNumber(kingdom.totalKp || 0)}`, inline: true }
         )
         .setColor(0x00AAFF);
 
@@ -684,6 +713,7 @@ export async function editKingdom(interaction: ChatInputCommandInteraction) {
                 new StringSelectMenuOptionBuilder().setLabel('General Info (Name, Seed, Reqs)').setValue('edit_general').setEmoji('📝'),
                 new StringSelectMenuOptionBuilder().setLabel('Migration (Dates, Slots)').setValue('edit_migration').setEmoji('📅'),
                 new StringSelectMenuOptionBuilder().setLabel('Kingdom Stats (KvK, Total KP)').setValue('edit_stats').setEmoji('📊'),
+                new StringSelectMenuOptionBuilder().setLabel('KvK Status').setValue('edit_kvk_status').setEmoji('⚔️'),
                 new StringSelectMenuOptionBuilder().setLabel('Questions').setValue('edit_questions').setEmoji('❓'),
                 new StringSelectMenuOptionBuilder().setLabel('Banner Image').setValue('edit_image').setEmoji('🖼️'),
                 new StringSelectMenuOptionBuilder().setLabel('Close Menu').setValue('close_menu').setEmoji('❌')
@@ -792,6 +822,31 @@ export async function editKingdom(interaction: ChatInputCommandInteraction) {
                 await prisma.kingdom.update({ where: { id: kingdom.id }, data: { kvkWins: w, kvkLosses: l, totalKp: k } });
                 kingdom = await prisma.kingdom.findUnique({ where: { id: kingdom.id } });
                 await submitted.update({ embeds: [getEmbed()], components: [getRow()] });
+
+            } else if (choice === 'edit_kvk_status') {
+                const kvkRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                    ['KvK 1', 'KvK 2', 'KvK 3', 'KvK 4', 'SOC'].map(s =>
+                        new ButtonBuilder().setCustomId(`edit_kvk_${s}`).setLabel(s).setStyle(ButtonStyle.Primary)
+                    )
+                );
+                await i.update({ content: "Select new KvK Status:", components: [kvkRow], embeds: [] });
+
+                try {
+                    const btn = await replyMsg.awaitMessageComponent({
+                        filter: b => b.user.id === user.id && b.customId.startsWith('edit_kvk_'),
+                        time: 60000,
+                        componentType: ComponentType.Button
+                    });
+
+                    const newStatus = btn.customId.split('_')[2];
+                    await prisma.kingdom.update({ where: { id: kingdom.id }, data: { kvkStatus: newStatus } });
+                    kingdom = await prisma.kingdom.findUnique({ where: { id: kingdom.id } });
+
+                    await btn.update({ content: null, embeds: [getEmbed()], components: [getRow()] });
+                } catch (e) {
+                    // fall back
+                    await interaction.editReply({ content: null, embeds: [getEmbed()], components: [getRow()] });
+                }
 
             } else if (choice === 'edit_questions') {
                 // For questions, Modal is tricky for list. 
