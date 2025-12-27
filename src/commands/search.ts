@@ -312,15 +312,29 @@ async function createApplicationTicket(interaction: ButtonInteraction | ModalSub
         });
 
         // 1. Application Form (Questions)
-        if (answers || kingdom.questions) {
+        if (answers) {
             const embed = new EmbedBuilder()
                 .setTitle("📋 Application Form")
                 .setColor(0x00AAFF)
-                .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
-                .addFields(
-                    { name: 'Kingdom Questions', value: kingdom.questions || "None provided." },
-                    { name: 'User Answers', value: answers || "No answers provided." }
-                );
+                .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() });
+
+            // Split the formatted answers string back into chunks to display as fields
+            // Format was: **Question**\nAnswer\n\n
+            if (answers.includes('**')) {
+                const chunks = answers.split('\n\n').filter(c => c.trim().length > 0);
+                chunks.forEach(chunk => {
+                    const lines = chunk.split('\n');
+                    const question = lines[0].replace(/\*\*/g, ''); // Remove bold markers for title
+                    const answer = lines.slice(1).join('\n');
+
+                    if (question && answer) {
+                        embed.addFields({ name: question, value: answer });
+                    }
+                });
+            } else {
+                embed.setDescription(answers);
+            }
+
             await channel.send({ embeds: [embed] });
         }
 
