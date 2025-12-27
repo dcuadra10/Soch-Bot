@@ -128,7 +128,8 @@ export async function handleForumMessage(message: Message) {
             const ts = Math.floor(banExpires!.getTime() / 1000);
             await message.author.send(`🚫 **Ban Applied**\nYou have reached 3 strikes in this recruitment thread. You are banned from bumping until <t:${ts}:F>.`);
         } else {
-            await message.author.send(`⚠️ **Warning (${newStrikes}/3)**\nPlease do not send chat messages in the recruitment thread. Your next strike will result in a temporary bump ban.`);
+            const strikesLeft = 3 - newStrikes;
+            await message.author.send(`⚠️ **Warning (${newStrikes}/3)**\nPlease do not send chat messages in the recruitment thread.\n Strikes remaining before bump ban: **${strikesLeft}**.`);
         }
     } catch { }
 
