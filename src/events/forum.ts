@@ -14,18 +14,35 @@ export async function handleThreadCreate(thread: ThreadChannel) {
     if (!thread.parentId || !config.forumChannelId.includes(thread.parentId)) return;
 
     // Enforce one post per user (owner) - Close OLDER post if exists
-    const existing = await prisma.recruitmentThread.findFirst({ where: { ownerId: thread.ownerId! } });
-    if (existing) {
+    // Enforce one post per user (owner) **PER FORUM**
+    // Find ALL posts owned by this user
+    const userThreads = await prisma.recruitmentThread.findMany({ where: { ownerId: thread.ownerId! } });
+
+    for (const existing of userThreads) {
         try {
-            const oldThread = await thread.guild.channels.fetch(existing.id) as ThreadChannel;
-            if (oldThread) {
-                await oldThread.send('⚠️ **New Post Created**\nYou have created a newer recruitment post. This older post is now closed.');
+            // Fetch the old thread to check its Parent ID (Forum)
+            const oldThread = await thread.guild.channels.fetch(existing.id).catch(() => null) as ThreadChannel;
+
+            // If the thread is gone/deleted, just clean up DB
+            if (!oldThread) {
+                await prisma.recruitmentThread.delete({ where: { id: existing.id } });
+                continue;
+            }
+
+            // CHECK: Is it in the SAME forum?
+            if (oldThread.parentId === thread.parentId) {
+                // Yes, same forum -> Close the OLD one
+                await oldThread.send('⚠️ **New Post Created**\nYou have created a newer recruitment post in this forum. This older post is now closed.');
                 await oldThread.setLocked(true);
                 await oldThread.setArchived(true);
+
+                // Remove from DB so the new one can take its place
+                await prisma.recruitmentThread.delete({ where: { id: existing.id } });
             }
-        } catch { }
-        // Delete old record to allow new one
-        await prisma.recruitmentThread.delete({ where: { id: existing.id } });
+            // If parentId differs, it's a different forum (e.g. Alliance Ads vs Kingdom Ads), so Keep it.
+        } catch (e) {
+            console.error(`Error handling legacy thread cleanup: ${e}`);
+        }
     }
 
     // Compute contentHash for duplicate detection with retry
