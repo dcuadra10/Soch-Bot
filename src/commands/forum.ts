@@ -17,7 +17,18 @@ export async function bumpCommand(interaction: ChatInputCommandInteraction) {
 
     if (threadData.bumpBanExpires && threadData.bumpBanExpires > new Date()) {
         const ts = Math.floor(threadData.bumpBanExpires.getTime() / 1000);
-        await interaction.reply({ content: `🚫 **You are banned from bumping** until <t:${ts}:F>.\nReason: Sending chat messages in recruitment post.`, flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: `🚫 **This post is banned from bumping** until <t:${ts}:F>.\nReason: Excessive violations.`, flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    // Check for user-specific ban (from strikes)
+    const userBan = await prisma.bumpUser.findUnique({
+        where: { threadId_userId: { threadId, userId: interaction.user.id } }
+    });
+
+    if (userBan && userBan.banExpires && userBan.banExpires > new Date()) {
+        const ts = Math.floor(userBan.banExpires.getTime() / 1000);
+        await interaction.reply({ content: `🚫 **You are banned from bumping this post** until <t:${ts}:F>.\nReason: Sending chat messages in recruitment post.`, flags: MessageFlags.Ephemeral });
         return;
     }
 
