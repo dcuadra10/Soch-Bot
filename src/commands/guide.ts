@@ -19,9 +19,9 @@ export async function guideCommand(interaction: ChatInputCommandInteraction) {
                 value:
                     '**• Creating a Post:**\nGo to the Recruitment Forum <#' + (config.forumChannelId?.[0] || 'unavailable') + '> and create a **New Post**.\n' +
                     '_Title Requirement:_ Must include your Kingdom Number or Project Name.\n\n' +
-                    '**• Bumping:**\nUse `/bump` inside your thread every **6 hours** to move it to the top.\n\n' +
+                    '**• Bumping:**\nUse `/bump` inside your post every **6 hours** to move it to the top.\n\n' +
                     '**• One Post Rule:**\nYou can only have **one** active recruitment post. Use `/remake` if you want to replace your old one.\n\n' +
-                    '**• ⚠️ Strict Chat Rules:**\nDo **NOT** send chat messages inside recruitment threads. They will be deleted.\n' +
+                    '**• ⚠️ Strict Chat Rules:**\nDo **NOT** send chat messages inside recruitment posts. They will be deleted.\n' +
                     '• 1st/2nd Offense: Warning DM.\n' +
                     '• **3rd Offense:** You will be **banned** from bumping that post for **24 hours**.'
             },

@@ -11,14 +11,14 @@ export async function unbanPostCommand(interaction: ChatInputCommandInteraction)
     const channel = interaction.options.getChannel('post') || interaction.channel;
 
     if (!channel || channel.type !== ChannelType.PublicThread) {
-        await interaction.reply({ content: "⚠️ Please specify a valid recruitment thread or use this command inside one.", flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: "⚠️ Please specify a valid recruitment post or use this command inside one.", flags: MessageFlags.Ephemeral });
         return;
     }
 
     const threadData = await prisma.recruitmentThread.findUnique({ where: { id: channel.id } });
 
     if (!threadData) {
-        await interaction.reply({ content: "⚠️ This thread is not tracked in the database.", flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: "⚠️ This post is not tracked in the database.", flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -42,7 +42,7 @@ export async function checkPostCommand(interaction: ChatInputCommandInteraction)
     const channel = interaction.options.getChannel('post') || interaction.channel;
 
     if (!channel || channel.type !== ChannelType.PublicThread) {
-        await interaction.reply({ content: "⚠️ Please specify a valid recruitment thread or use this command inside one.", flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: "⚠️ Please specify a valid recruitment post or use this command inside one.", flags: MessageFlags.Ephemeral });
         return;
     }
 

@@ -131,12 +131,12 @@ const commands = [
         .setName('unban-post')
         .setDescription('Remove a bump ban from a recruitment post (Admin Only)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(o => o.setName('post').setDescription('The thread to unban (Default: Current channel)').setRequired(false)),
+        .addChannelOption(o => o.setName('post').setDescription('The post to unban (Default: Current channel)').setRequired(false)),
     new SlashCommandBuilder()
         .setName('check-post')
         .setDescription('Check status/bans of a recruitment post (Admin Only)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(o => o.setName('post').setDescription('The thread to check (Default: Current channel)').setRequired(false)),
+        .addChannelOption(o => o.setName('post').setDescription('The post to check (Default: Current channel)').setRequired(false)),
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(config.token!);

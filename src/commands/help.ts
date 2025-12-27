@@ -35,8 +35,8 @@ export async function helpCommand(interaction: ChatInputCommandInteraction) {
             {
                 name: '🛡️ **Staff Tools**',
                 value:
-                    '**`/unban-post`** – Remove bump ban/strikes from a thread.\n' +
-                    '**`/check-post`** – Check strike status of a thread.'
+                    '**`/unban-post`** – Remove bump ban/strikes from a post.\n' +
+                    '**`/check-post`** – Check strike status of a post.'
             }
         )
         .setFooter({ text: 'SOCH Bot • Rise of Kingdoms', iconURL: interaction.client.user?.displayAvatarURL() });

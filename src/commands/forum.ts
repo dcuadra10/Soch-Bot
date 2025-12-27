@@ -3,7 +3,7 @@ import { prisma, config } from '../config';
 
 export async function bumpCommand(interaction: ChatInputCommandInteraction) {
     if (!interaction.channel?.isThread()) {
-        await interaction.reply({ content: "⚠️ This command can only be used in a recruitment post (thread).", flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: "⚠️ This command can only be used in a recruitment post.", flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -46,7 +46,7 @@ export async function bumpCommand(interaction: ChatInputCommandInteraction) {
 
 export async function remakeCommand(interaction: ChatInputCommandInteraction) {
     if (!interaction.channel?.isThread()) {
-        await interaction.reply({ content: "⚠️ This command can only be used in a recruitment post (thread).", flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: "⚠️ This command can only be used in a recruitment post.", flags: MessageFlags.Ephemeral });
         return;
     }
 

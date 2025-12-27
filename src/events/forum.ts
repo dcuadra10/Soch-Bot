@@ -3,8 +3,8 @@ import { createHash } from 'crypto';
 import { prisma, config } from '../config';
 
 /**
- * Handles creation of a recruitment thread.
- * - Validates that the thread belongs to a configured forum channel.
+ * Handles creation of a recruitment post.
+ * - Validates that the post belongs to a configured forum channel.
  * - Enforces one active post per user.
  * - Detects duplicate content via MD5 hash and closes the older post.
  * - Sends a welcome embed with bump info and rules.
@@ -19,7 +19,7 @@ export async function handleThreadCreate(thread: ThreadChannel) {
         try {
             const oldThread = await thread.guild.channels.fetch(existing.id) as ThreadChannel;
             if (oldThread) {
-                await oldThread.send('⚠️ **New Post Created**\nYou have created a newer recruitment post. This older thread is now closed.');
+                await oldThread.send('⚠️ **New Post Created**\nYou have created a newer recruitment post. This older post is now closed.');
                 await oldThread.setLocked(true);
                 await oldThread.setArchived(true);
             }
@@ -126,10 +126,10 @@ export async function handleForumMessage(message: Message) {
     try {
         if (isBanned) {
             const ts = Math.floor(banExpires!.getTime() / 1000);
-            await message.author.send(`🚫 **Ban Applied**\nYou have reached 3 strikes in this recruitment thread. You are banned from bumping until <t:${ts}:F>.`);
+            await message.author.send(`🚫 **Ban Applied**\nYou have reached 3 strikes in this recruitment post. You are banned from bumping until <t:${ts}:F>.`);
         } else {
             const strikesLeft = 3 - newStrikes;
-            await message.author.send(`⚠️ **Warning (${newStrikes}/3)**\nPlease do not send chat messages in the recruitment thread.\n Strikes remaining before bump ban: **${strikesLeft}**.`);
+            await message.author.send(`⚠️ **Warning (${newStrikes}/3)**\nPlease do not send chat messages in the recruitment post.\n Strikes remaining before bump ban: **${strikesLeft}**.`);
         }
     } catch { }
 
@@ -142,7 +142,7 @@ export async function handleForumMessage(message: Message) {
                 const embed = EmbedBuilder.from(embeds[0]);
                 const users = await prisma.bumpUser.findMany({ where: { threadId } });
                 const lines = users.map(u => `<@${u.userId}>: ${u.banExpires && u.banExpires > new Date() ? `BANNED until <t:${Math.floor(u.banExpires.getTime() / 1000)}:R>` : `${u.strikeCount} strike(s)`}`);
-                const baseDesc = embed.data.description?.split('⚠️ **Recruitment Thread Warning**')[0] || embed.data.description || '';
+                const baseDesc = embed.data.description?.split('⚠️ **Recruitment Post Warning**')[0] || embed.data.description || '';
                 embed.setDescription(`${baseDesc}\n\n**User Strikes / Bans:**\n${lines.join('\n')}`);
                 await starter.edit({ embeds: [embed] });
             }
