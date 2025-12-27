@@ -21,6 +21,12 @@ export async function bumpCommand(interaction: ChatInputCommandInteraction) {
         return;
     }
 
+    // STRICT OWNER CHECK FOR BUMP
+    if (interaction.user.id !== threadData.ownerId) {
+        await interaction.reply({ content: "🚫 Only the post owner can bump this post.", flags: MessageFlags.Ephemeral });
+        return;
+    }
+
     // Check for user-specific ban (from strikes)
     const userBan = await prisma.bumpUser.findUnique({
         where: { threadId_userId: { threadId, userId: interaction.user.id } }
@@ -52,6 +58,11 @@ export async function bumpCommand(interaction: ChatInputCommandInteraction) {
     await interaction.reply({
         content: `👊 **Bumped!**\nSee you in 6 hours.\nNext /bump available: <t:${nextAvailable}:R>`
     });
+
+    // Auto-delete after 1 minute (60000ms)
+    setTimeout(() => {
+        interaction.deleteReply().catch(err => console.error("Failed to auto-delete bump msg:", err));
+    }, 60000);
 }
 
 
@@ -61,10 +72,12 @@ export async function remakeCommand(interaction: ChatInputCommandInteraction) {
         return;
     }
 
+    // STRICT OWNER CHECK FOR REMAKE
+    // We check against the channel ownerId (Discord) or DB. 
+    // Using channel.ownerId is safer for general thread ownership.
     const isOwner = interaction.user.id === interaction.channel.ownerId;
-    const isAdmin = interaction.memberPermissions?.has('Administrator');
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwner) {
         await interaction.reply({ content: "🚫 Only the post owner can remake this.", flags: MessageFlags.Ephemeral });
         return;
     }
