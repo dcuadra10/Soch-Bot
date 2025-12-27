@@ -134,40 +134,5 @@ export async function handleForumMessage(message: Message) {
     } catch { }
 
     // Update embed with strike list
-    // Update embed with strike list (Find Bot's Welcome Message)
-    try {
-        // Fetch recent messages to find the specific bot message containing rules
-        const messages = await (message.channel as ThreadChannel).messages.fetch({ limit: 50 });
-        const botMsg = messages.find(m =>
-            m.author.id === message.client.user.id &&
-            m.embeds.length > 0 &&
-            (m.embeds[0].description?.includes('Forum Post Rules') ?? false)
-        );
-
-        if (botMsg) {
-            const embed = EmbedBuilder.from(botMsg.embeds[0]);
-            const users = await prisma.bumpUser.findMany({ where: { threadId } });
-
-            // Format lines
-            const lines = users.map(u => {
-                const isBanned = u.banExpires && u.banExpires > new Date();
-                return `<@${u.userId}>: ${isBanned ? `BANNED until <t:${Math.floor(u.banExpires!.getTime() / 1000)}:R>` : `${u.strikeCount} strike(s)`}`;
-            });
-
-            // Clean previous strike info to avoid duplicates
-            // We look for the section header we added previously
-            const delimiter = '\n\n**User Strikes / Bans:**';
-            const baseDesc = embed.data.description?.split(delimiter)[0] || embed.data.description || '';
-
-            if (lines.length > 0) {
-                embed.setDescription(`${baseDesc}${delimiter}\n${lines.join('\n')}`);
-            } else {
-                embed.setDescription(baseDesc);
-            }
-
-            await botMsg.edit({ embeds: [embed] });
-        }
-    } catch (e) {
-        console.error('Failed to update embed with strikes', e);
-    }
+    // Strike list display removed by user request.
 }
