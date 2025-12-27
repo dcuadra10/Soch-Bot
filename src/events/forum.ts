@@ -13,40 +13,56 @@ export async function handleThreadCreate(thread: ThreadChannel) {
     console.log(`[DEBUG] Thread Created: ${thread.id} in Parent: ${thread.parentId}`);
     if (!thread.parentId || !config.forumChannelId.includes(thread.parentId)) return;
 
-    // Enforce one post per user (owner)
+    // Enforce one post per user (owner) - Close OLDER post if exists
     const existing = await prisma.recruitmentThread.findFirst({ where: { ownerId: thread.ownerId! } });
     if (existing) {
         try {
-            await thread.guild.channels.fetch(existing.id);
-            await thread.send({ content: `🚫 **Limit Reached!**\nYou already have an active post: <#${existing.id}>. Use \`/remake\` on the old one if you want to replace it.` });
-            await thread.setLocked(true);
-            await thread.setArchived(true);
-            return;
-        } catch {
-            await prisma.recruitmentThread.delete({ where: { id: existing.id } });
-        }
+            const oldThread = await thread.guild.channels.fetch(existing.id) as ThreadChannel;
+            if (oldThread) {
+                await oldThread.send('⚠️ **New Post Created**\nYou have created a newer recruitment post. This older thread is now closed.');
+                await oldThread.setLocked(true);
+                await oldThread.setArchived(true);
+            }
+        } catch { }
+        // Delete old record to allow new one
+        await prisma.recruitmentThread.delete({ where: { id: existing.id } });
     }
 
-    // Compute content hash for duplicate detection
+    // Compute contentHash for duplicate detection with retry
     let contentHash: string | null = null;
-    try {
-        const starter = await thread.fetchStarterMessage();
-        if (starter) contentHash = createHash('md5').update(starter.content ?? '').digest('hex');
-    } catch { }
+    let starter = await thread.fetchStarterMessage().catch(() => null);
 
-    // Duplicate detection – close older post
+    if (!starter) {
+        // Retry once after short delay
+        await new Promise(r => setTimeout(r, 2000));
+        starter = await thread.fetchStarterMessage().catch(() => null);
+    }
+
+    // Fallback: Use thread ID fetch if starter helper fails (rare but possible in some lib versions)
+    if (!starter) {
+        try {
+            starter = await thread.messages.fetch(thread.id);
+        } catch { }
+    }
+
+    if (starter) {
+        contentHash = createHash('md5').update(starter.content ?? '').digest('hex');
+    }
+
+    // Duplicate detection – close older post if hash matches
     if (contentHash) {
         const duplicate = await prisma.recruitmentThread.findFirst({ where: { contentHash } });
         if (duplicate) {
             try {
                 const oldThread = await thread.guild.channels.fetch(duplicate.id) as ThreadChannel;
-                if (oldThread) {
+                if (oldThread && oldThread.id !== thread.id) {
                     await oldThread.send('⚠️ **Duplicate Content Detected**\nA newer post with identical content has been created. This older post is now closed.');
                     await oldThread.setLocked(true);
                     await oldThread.setArchived(true);
+                    await prisma.recruitmentThread.delete({ where: { id: duplicate.id } });
                 }
             } catch { }
-            await prisma.recruitmentThread.delete({ where: { id: duplicate.id } });
+
         }
     }
 

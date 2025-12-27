@@ -4,8 +4,7 @@ import { config } from './config';
 const commands = [
     new SlashCommandBuilder()
         .setName('register-kingdom')
-        .setDescription('Start the Kingdom Registration Wizard')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        .setDescription('Start the Kingdom Registration Wizard'),
     new SlashCommandBuilder()
         .setName('find-kingdom')
         .setDescription('Find a kingdom matching your stats (Seed required)')

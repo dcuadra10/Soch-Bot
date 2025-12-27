@@ -202,8 +202,8 @@ export async function registerKingdom(interaction: ChatInputCommandInteraction) 
     const kingRoleId = config.kingRoleId;
     const member = interaction.member as GuildMember;
 
-    if (kingRoleId && member && !member.roles.cache.has(kingRoleId)) {
-        await interaction.editReply({ content: "You do not have permission to register a kingdom." });
+    if (config.kingRoleId && member && !member.roles.cache.has(config.kingRoleId) && !member.permissions.has(PermissionFlagsBits.Administrator)) {
+        await interaction.editReply({ content: "🚫 You do not have permission to register a kingdom. You need the **King** role or Administrator permissions." });
         return;
     }
 
